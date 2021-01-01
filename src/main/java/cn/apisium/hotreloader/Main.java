@@ -24,7 +24,7 @@ import java.util.*;
 @Description("Auto reload your plugin.")
 @Author("Shirasawa")
 @Website("https://apisium.cn")
-@ApiVersion(ApiVersion.Target.v1_15)
+@ApiVersion(ApiVersion.Target.v1_13)
 @Permissions(@Permission(name = "hotreloader.use", defaultValue = PermissionDefault.OP))
 @Commands(@org.bukkit.plugin.java.annotation.command.Command(name = "setdevpath", aliases = { "sdp" }, permission = "hotreloader.use", permissionMessage = "§e[HotReloader]: §cYou do not have permission to do this!"))
 public class Main extends JavaPlugin {
