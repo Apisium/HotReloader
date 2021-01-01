@@ -83,6 +83,7 @@ public class Main extends JavaPlugin {
             task = null;
         }
         try {
+            if (pm.isPluginEnabled(plugin)) unload(plugin);
             plugin = Objects.requireNonNull(pm.loadPlugin(file));
             pm.enablePlugin(plugin);
         } catch (Exception e) {
