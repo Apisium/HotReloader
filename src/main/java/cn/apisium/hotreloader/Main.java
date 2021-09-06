@@ -4,6 +4,7 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.SimpleCommandMap;
+import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionDefault;
 import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -26,7 +27,9 @@ import java.util.*;
 @Website("https://apisium.cn")
 @ApiVersion(ApiVersion.Target.v1_13)
 @Permissions(@Permission(name = "hotreloader.use", defaultValue = PermissionDefault.OP))
-@Commands(@org.bukkit.plugin.java.annotation.command.Command(name = "setdevpath", aliases = { "sdp" }, permission = "hotreloader.use", permissionMessage = "§e[HotReloader]: §cYou do not have permission to do this!"))
+@Commands(@org.bukkit.plugin.java.annotation.command.Command(name = "setdevpath", aliases = { "sdp" },
+        permission = "hotreloader.use", permissionMessage = "§e[HotReloader]: §cYou do not have permission to do this!",
+        usage = "/setdevpath file.jar"))
 public class Main extends JavaPlugin {
     private final CommandSender logger = getServer().getConsoleSender();
     private final PluginManager pm = getServer().getPluginManager();
@@ -54,17 +57,55 @@ public class Main extends JavaPlugin {
         }
     }
 
+    @SuppressWarnings("NullableProblems")
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (args.length != 0) try {
+            String str = String.join(" ", args).trim();
+            Path path = Paths.get(str);
+            if (!str.endsWith("/") && !str.endsWith("\\")) {
+                if (path.isAbsolute()) {
+                    if (path.getParent() != null) path = path.getParent();
+                } else path = path.getParent() == null ? Paths.get("") : path.getParent();
+            }
+            ArrayList<String> dirs = new ArrayList<>(), files = new ArrayList<>();
+            Files.list(path).forEach(it -> {
+                try {
+                    String p = it.toString().replace("\\", "/")
+                            .split(" ", args.length)[args.length - 1];
+                    if (Files.isDirectory(it)) dirs.add(p + "/");
+                    else files.add(p);
+                } catch (Throwable ignored) { }
+            });
+            dirs.sort(Comparator.naturalOrder());
+            files.sort(Comparator.naturalOrder());
+            dirs.addAll(files);
+            return dirs;
+        } catch (Throwable ignored) { }
+        return Collections.emptyList();
+    }
+
     @SuppressWarnings("ConstantConditions")
     @Override
     public void onEnable() {
-        getServer().getPluginCommand("setdevpath").setExecutor(this);
+        PluginCommand cmd = getServer().getPluginCommand("setdevpath");
+        cmd.setExecutor(this);
+        cmd.setTabCompleter(this);
     }
 
     @SuppressWarnings({ "NullableProblems", "unchecked" })
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (watchKey != null) {
+            watchKey.cancel();
+            watchKey = null;
+        }
+        if (task != null) {
+            task.cancel();
+            task = null;
+        }
         if (args.length < 1) {
-            sender.sendMessage("§e[HotReloader]: §cArguments must be plugin path!");
+            sender.sendMessage("§e[HotReloader]: §aCanceled!");
             return true;
         }
         final File file = new File(String.join(" ", args));
@@ -74,19 +115,11 @@ public class Main extends JavaPlugin {
             sender.sendMessage("§e[HotReloader]: §cThis path is not exists: §b" + abs);
             return true;
         }
-        if (watchKey != null) {
-            watchKey.cancel();
-            watchKey = null;
-        }
-        if (task != null) {
-            task.cancel();
-            task = null;
-        }
         try {
             if (pm.isPluginEnabled(plugin)) unload(plugin);
             plugin = Objects.requireNonNull(pm.loadPlugin(file));
             pm.enablePlugin(plugin);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             e.printStackTrace();
             if (logger != sender) sender.sendMessage("§e[HotReloader]: §cFail to reload plugin!");
             logger.sendMessage("§e[HotReloader]: §cFail to reload plugin!");
@@ -101,22 +134,27 @@ public class Main extends JavaPlugin {
                     if (watchKey.pollEvents().stream().anyMatch(it -> ((WatchEvent<Path>) it).context().toString().equals(fn))) {
                         try {
                             getPluginLoader().getPluginDescription(file);
-                        } catch (Exception ignored) {
+                        } catch (Throwable ignored) {
                             continue;
                         }
-                        try {
-                            if (pm.isPluginEnabled(plugin)) unload(plugin);
-                            plugin = Objects.requireNonNull(pm.loadPlugin(file));
-                            pm.enablePlugin(plugin);
-                            getServer().broadcast("§e[HotReloader]: §aReload plugin successfully!", "hotreloader.use");
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                            getServer().broadcast("§e[HotReloader]: §cFail to reload plugin!", "hotreloader.use");
-                        }
+                        getServer().getScheduler().runTask(this, () -> {
+                            try {
+                                if (pm.isPluginEnabled(plugin)) unload(plugin);
+                                plugin = Objects.requireNonNull(pm.loadPlugin(file));
+                                pm.enablePlugin(plugin);
+                                getServer().getOnlinePlayers().forEach(Player::updateCommands);
+                                getServer().broadcast("§e[HotReloader]: §aReload plugin successfully!",
+                                        "hotreloader.use");
+                            } catch (Throwable e) {
+                                e.printStackTrace();
+                                getServer().broadcast("§e[HotReloader]: §cFail to reload plugin!",
+                                        "hotreloader.use");
+                            }
+                        });
                     }
                     if (!watchKey.reset()) break;
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 e.printStackTrace();
                 logger.sendMessage("§e[HotReloader]: §cFail to reload plugin!");
                 if (logger != sender) sender.sendMessage("§e[HotReloader]: §cFail to reload plugin!");
@@ -138,7 +176,7 @@ public class Main extends JavaPlugin {
     }
 
     @SuppressWarnings("SuspiciousMethodCalls")
-    public void unload(final org.bukkit.plugin.Plugin plugin) throws Exception {
+    public void unload(final org.bukkit.plugin.Plugin plugin) throws Throwable {
         String name = plugin.getName();
         pm.disablePlugin(plugin);
         plugins.remove(plugin);
